@@ -28,8 +28,9 @@ const char *LED_NAMES[NUM_LEDS] = {
 
 volatile int current_led = 0; // Índice atual (0 a 2)
 volatile int seconds_remaining = 0;
-volatile bool button_pressed = false;
+volatile bool button_pressed = true;
 volatile bool name_shown = false;
+volatile bool debounce_button = false;
 
 const int BEEP_DURATIONS[NUM_LEDS] = {
     200,  // Vermelho = beep curto
@@ -149,45 +150,48 @@ int64_t change_led_callback(alarm_id_t id, void *user_data)
     // Avança para o próximo LED (0 → 1 → 2 → 0)
     current_led = (current_led + 1) % 3;
     name_shown = false;
+
     turn_on_led(current_led);
 
     // Atualiza o tempo restante com base no novo LED
     seconds_remaining = LED_TIMES[current_led] / 1000;
+
+    button_pressed = true;
 
     // Agenda um novo alarme para trocar o LED após o tempo definido (em milissegundos) e salva o ID do alarme
     led_alarm_id = add_alarm_in_ms(LED_TIMES[current_led], change_led_callback, NULL, false);
     return 0;
 }
 
-bool timepiece_callback(repeating_timer_t *t)
+// Callback para debounce do botão
+int64_t debounce_callback(alarm_id_t id, void *user_data)
 {
-    if (seconds_remaining < 5 && seconds_remaining > 0)
-    {
-        printf("Tempo restante: %d segundos\n", seconds_remaining);
-        seconds_remaining--;
-    }
-    return true;
+    debounce_button = false;
+    return 0;
 }
 
 void button_irq_handler(uint gpio, uint32_t events)
 {
-    if (gpio == BUTTON_A)
-    {
-        cancel_alarm(led_alarm_id);  // Cancelar alarme atual
-        cancel_alarm(beep_alarm_id); // Cancelar beep atual
-        buzzer_off();
+    if (!button_pressed || debounce_button)
+        return;
 
-        printf("Botão de Pedestres acionado\n");
-        add_repeating_timer_ms(1000, timepiece_callback, NULL, &timer);
+    debounce_button = true;
+    add_alarm_in_ms(200, debounce_callback, NULL, false);
 
-        current_led = 2; // Amarelo
+    cancel_alarm(led_alarm_id);  // Cancelar alarme atual
+    cancel_alarm(beep_alarm_id); // Cancelar beep atual
+    buzzer_off();
 
-        turn_on_led(current_led);
-        seconds_remaining = LED_TIMES[current_led] / 1000;
+    printf("Botão de Pedestres acionado\n");
+    button_pressed = false;
+    current_led = 2; // Amarelo
+    name_shown = false;
 
-        // Agenda um novo alarme para trocar o LED após o tempo definido (em milissegundos) e salva o ID do alarme
-        led_alarm_id = add_alarm_in_ms(LED_TIMES[current_led], change_led_callback, NULL, false);
-    }
+    turn_on_led(current_led);
+    seconds_remaining = LED_TIMES[current_led] / 1000;
+
+    // Agenda um novo alarme para trocar o LED após o tempo definido (em milissegundos) e salva o ID do alarme
+    led_alarm_id = add_alarm_in_ms(LED_TIMES[current_led], change_led_callback, NULL, false);
 }
 
 int main()
@@ -196,7 +200,6 @@ int main()
     setup_leds();
     setup_button();
     setup_buzzer();
-    sleep_ms(2000);
 
     current_led = 0;
     name_shown = false;
