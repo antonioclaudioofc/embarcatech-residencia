@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "hardware/gpio.h"
 #include "hardware/timer.h"
 #include "hardware/pwm.h"
 #include "hardware/clocks.h"
@@ -30,6 +29,22 @@ const char *LED_NAMES[NUM_LEDS] = {
 volatile int current_led = 0; // Índice atual (0 a 2)
 volatile int seconds_remaining = 0;
 volatile bool button_pressed = false;
+volatile bool name_shown = false;
+
+const int BEEP_DURATIONS[NUM_LEDS] = {
+    200,  // Vermelho = beep curto
+    500,  // Verde    = beep médio
+    1000, // Amarelo  = beep longo
+};
+
+const int BEEP_PAUSES[NUM_LEDS] = {
+    300, // Vermelho = pausa curta
+    500, // Verde    = pausa média
+    700, // Amarelo  = pausa longa
+};
+
+alarm_id_t beep_alarm_id;
+bool beep_on = false;
 
 alarm_id_t led_alarm_id;
 repeating_timer_t timer;
@@ -65,23 +80,48 @@ void setup_buzzer()
     pwm_set_gpio_level(BUZZER_PIN, 0);
 }
 
-void beep()
+void buzzer_on()
 {
     uint slice_num = pwm_gpio_to_slice_num(BUZZER_PIN);
-
     pwm_set_gpio_level(BUZZER_PIN, 2048);
+}
 
-    sleep_ms(300);
-
+void buzzer_off()
+{
+    uint slice_num = pwm_gpio_to_slice_num(BUZZER_PIN);
     pwm_set_gpio_level(BUZZER_PIN, 0);
+}
 
-    sleep_ms(100);
+int64_t beep_callback(alarm_id_t id, void *user_data)
+{
+    if (beep_on)
+    {
+        buzzer_off();
+        beep_on = false;
+        return BEEP_PAUSES[current_led] * 1000; // pausa antes do próximo beep
+    }
+    else
+    {
+        buzzer_on();
+        beep_on = true;
+        return BEEP_DURATIONS[current_led] * 1000; // tempo do beep
+    }
 }
 
 void turn_on_led(int led_index)
 {
     gpio_put(LED_RED, 0);
     gpio_put(LED_GREEN, 0);
+
+    cancel_alarm(beep_alarm_id); // Garante que beep antigo pare
+    beep_on = false;
+    buzzer_off(); // Garante que comece silencioso
+
+    if (!name_shown)
+    {
+        printf("Sinal: %s\n", LED_NAMES[led_index]);
+        name_shown = true;
+    }
 
     switch (led_index)
     {
@@ -96,13 +136,19 @@ void turn_on_led(int led_index)
         gpio_put(LED_GREEN, 1);
         break;
     }
+
+    // Inicia ciclo de beeps para o LED atual
+    beep_alarm_id = add_alarm_in_us(0, beep_callback, NULL, true);
 }
 
 int64_t change_led_callback(alarm_id_t id, void *user_data)
 {
+    cancel_alarm(beep_alarm_id); // Para beep atual
+    buzzer_off();
+
     // Avança para o próximo LED (0 → 1 → 2 → 0)
     current_led = (current_led + 1) % 3;
-
+    name_shown = false;
     turn_on_led(current_led);
 
     // Atualiza o tempo restante com base no novo LED
@@ -113,11 +159,11 @@ int64_t change_led_callback(alarm_id_t id, void *user_data)
     return 0;
 }
 
-bool print_timer_callback(repeating_timer_t *t)
+bool timepiece_callback(repeating_timer_t *t)
 {
-    if (seconds_remaining > 0)
+    if (seconds_remaining < 5 && seconds_remaining > 0)
     {
-        printf("Sinal:  %s, Tempo restante: %d segundos\n", LED_NAMES[current_led], seconds_remaining);
+        printf("Tempo restante: %d segundos\n", seconds_remaining);
         seconds_remaining--;
     }
     return true;
@@ -127,9 +173,12 @@ void button_irq_handler(uint gpio, uint32_t events)
 {
     if (gpio == BUTTON_A)
     {
-        cancel_alarm(led_alarm_id); // Cancelar alarme atual
+        cancel_alarm(led_alarm_id);  // Cancelar alarme atual
+        cancel_alarm(beep_alarm_id); // Cancelar beep atual
+        buzzer_off();
 
-        printf("Botão de Pedestres acionado");
+        printf("Botão de Pedestres acionado\n");
+        add_repeating_timer_ms(1000, timepiece_callback, NULL, &timer);
 
         current_led = 2; // Amarelo
 
@@ -147,13 +196,15 @@ int main()
     setup_leds();
     setup_button();
     setup_buzzer();
+    sleep_ms(2000);
 
+    current_led = 0;
+    name_shown = false;
     turn_on_led(current_led);
     seconds_remaining = LED_TIMES[current_led] / 1000;
 
     gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_EDGE_FALL, true, button_irq_handler);
 
-    add_repeating_timer_ms(1000, print_timer_callback, NULL, &timer);
     led_alarm_id = add_alarm_in_ms(LED_TIMES[current_led], change_led_callback, NULL, false);
 
     while (true)
