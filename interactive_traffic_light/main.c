@@ -1,16 +1,17 @@
 #include <stdio.h>
+#include <string.h>
 #include "pico/stdlib.h"
 #include "hardware/timer.h"
 #include "hardware/pwm.h"
 #include "hardware/clocks.h"
+#include "hardware/gpio.h"
 
-#define LED_GREEN 11
-#define LED_RED 13
-
-#define BUTTON_A 5
-
-#define BUZZER_PIN 21
-#define BUZZER_FREQUENCY 100
+#include "setup/setup.h"
+#include "setup/buzzer/buzzer.h"
+#include "setup/button/button.h"
+#include "setup/led/led.h"
+#include "setup/display/display.h"
+#include "utils/ssd1306_i2c.h"
 
 #define NUM_LEDS 3
 
@@ -33,6 +34,12 @@ volatile bool name_shown = false;
 volatile bool debounce_button = false;
 volatile bool is_traffic_yellow = false;
 
+struct render_area frame_area = {
+    .start_column = 0,
+    .end_column = ssd1306_width - 1,
+    .start_page = 0,
+    .end_page = ssd1306_n_pages - 1};
+
 const int BEEP_DURATIONS[NUM_LEDS] = {
     200,  // Vermelho = beep curto
     500,  // Verde    = beep médio
@@ -50,37 +57,6 @@ bool beep_on = false;
 
 alarm_id_t led_alarm_id;
 repeating_timer_t timer;
-
-void setup_leds()
-{
-    gpio_init(LED_RED);
-    gpio_set_dir(LED_RED, GPIO_OUT);
-    gpio_put(LED_RED, 0);
-
-    gpio_init(LED_GREEN);
-    gpio_set_dir(LED_GREEN, GPIO_OUT);
-    gpio_put(LED_GREEN, 0);
-}
-
-void setup_button()
-{
-    gpio_init(BUTTON_A);
-    gpio_set_dir(BUTTON_A, GPIO_IN);
-    gpio_pull_up(BUTTON_A);
-}
-
-void setup_buzzer()
-{
-    gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
-
-    uint slice_num = pwm_gpio_to_slice_num(BUZZER_PIN);
-
-    pwm_config config = pwm_get_default_config();
-    pwm_config_set_clkdiv(&config, clock_get_hz(clk_sys) / (BUZZER_FREQUENCY * 4096));
-    pwm_init(slice_num, &config, true);
-
-    pwm_set_gpio_level(BUZZER_PIN, 0);
-}
 
 void buzzer_on()
 {
@@ -109,6 +85,28 @@ int64_t beep_callback(alarm_id_t id, void *user_data)
         return BEEP_DURATIONS[current_led] * 1000; // tempo do beep
     }
 }
+
+void clear_display()
+{
+    uint8_t ssd[ssd1306_buffer_length];
+    memset(ssd, 0, ssd1306_buffer_length);
+    render_on_display(ssd, &frame_area);
+}
+
+void show_seconds_on_display(int seconds)
+{
+    uint8_t ssd[ssd1306_buffer_length];
+    memset(ssd, 0, ssd1306_buffer_length);
+
+    ssd1306_draw_string(ssd, 10, 10, "Tempo restante:");
+
+    char text[4];
+    snprintf(text, sizeof(text), "%d", seconds);
+    ssd1306_draw_string(ssd, 50, 30, text);
+
+    render_on_display(ssd, &frame_area);
+}
+
 bool timepiece_callback(repeating_timer_t *t)
 {
 
@@ -117,11 +115,18 @@ bool timepiece_callback(repeating_timer_t *t)
         if (seconds_remaining <= 5)
         {
             printf("Tempo restante: %d segundos\n", seconds_remaining);
+            show_seconds_on_display(seconds_remaining);
         }
         seconds_remaining--;
+
+        // Se chegou a 0 depois de decrementar, agende a limpeza do display
+        if (seconds_remaining == 0)
+        {
+            add_alarm_in_ms(1000, (alarm_callback_t)clear_display, NULL, false);
+        }
     }
 
-    return true;
+        return true;
 }
 
 void turn_on_led(int led_index)
@@ -141,7 +146,8 @@ void turn_on_led(int led_index)
 
     if (led_index == 0 && is_traffic_yellow) // Se está indo para vermelho após botão
     {
-        add_repeating_timer_ms(1000, timepiece_callback, NULL, &timer);
+        // Adicionar 0.9s por motivo que adicionei uma debounce no botão de 0.2s e não estava mostrando o cronometro até o 5s
+        add_repeating_timer_ms(900, timepiece_callback, NULL, &timer);
     }
 
     switch (led_index)
@@ -164,6 +170,7 @@ void turn_on_led(int led_index)
 
 int64_t change_led_callback(alarm_id_t id, void *user_data)
 {
+    cancel_alarm(beep_alarm_id); // Garante que beep antigo pare
     cancel_alarm(beep_alarm_id); // Para beep atual
     buzzer_off();
 
@@ -200,13 +207,16 @@ void button_irq_handler(uint gpio, uint32_t events)
     debounce_button = true;
     add_alarm_in_ms(200, debounce_callback, NULL, false);
 
-    cancel_alarm(led_alarm_id);  // Cancelar alarme atual
+    cancel_alarm(led_alarm_id);
     cancel_alarm(beep_alarm_id); // Cancelar beep atual
     buzzer_off();
+    cancel_repeating_timer(&timer);
 
     printf("Botão de Pedestres acionado\n");
+
     button_pressed = false;
     is_traffic_yellow = true;
+
     current_led = 2; // Amarelo
     name_shown = false;
 
@@ -219,10 +229,10 @@ void button_irq_handler(uint gpio, uint32_t events)
 
 int main()
 {
-    stdio_init_all();
-    setup_leds();
-    setup_button();
-    setup_buzzer();
+    setup();
+
+    calculate_render_area_buffer_length(&frame_area);
+    clear_display();
 
     current_led = 0;
     name_shown = false;
@@ -235,6 +245,8 @@ int main()
 
     while (true)
     {
-        tight_loop_contents();
+        sleep_ms(100);
     }
+
+    return 0;
 }

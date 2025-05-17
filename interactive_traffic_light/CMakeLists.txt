@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(interactive_traffic_light interactive_traffic_light.c )
+add_executable(interactive_traffic_light main.c setup/setup.c setup/button/button.c setup/buzzer/buzzer.c setup/led/led.c setup/display/display.c utils/ssd1306_i2c.c )
 
 pico_set_program_name(interactive_traffic_light "interactive_traffic_light")
 pico_set_program_version(interactive_traffic_light "0.1")
@@ -46,11 +46,11 @@ pico_enable_stdio_usb(interactive_traffic_light 1)
 
 # Add the standard library to the build
 target_link_libraries(interactive_traffic_light
-        pico_stdlib hardware_timer hardware_pwm hardware_clocks)
+        pico_stdlib hardware_timer hardware_pwm hardware_clocks hardware_gpio hardware_i2c)
 
 # Add the standard include files to the build
 target_include_directories(interactive_traffic_light PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_CURRENT_LIST_DIR}/setup ${CMAKE_CURRENT_LIST_DIR}/utils 
 )
 
 # Add any user requested libraries
