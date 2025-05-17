@@ -31,6 +31,7 @@ volatile int seconds_remaining = 0;
 volatile bool button_pressed = true;
 volatile bool name_shown = false;
 volatile bool debounce_button = false;
+volatile bool is_traffic_yellow = false;
 
 const int BEEP_DURATIONS[NUM_LEDS] = {
     200,  // Vermelho = beep curto
@@ -108,6 +109,20 @@ int64_t beep_callback(alarm_id_t id, void *user_data)
         return BEEP_DURATIONS[current_led] * 1000; // tempo do beep
     }
 }
+bool timepiece_callback(repeating_timer_t *t)
+{
+
+    if (seconds_remaining > 0)
+    {
+        if (seconds_remaining <= 5)
+        {
+            printf("Tempo restante: %d segundos\n", seconds_remaining);
+        }
+        seconds_remaining--;
+    }
+
+    return true;
+}
 
 void turn_on_led(int led_index)
 {
@@ -122,6 +137,11 @@ void turn_on_led(int led_index)
     {
         printf("Sinal: %s\n", LED_NAMES[led_index]);
         name_shown = true;
+    }
+
+    if (led_index == 0 && is_traffic_yellow) // Se está indo para vermelho após botão
+    {
+        add_repeating_timer_ms(1000, timepiece_callback, NULL, &timer);
     }
 
     switch (led_index)
@@ -149,9 +169,11 @@ int64_t change_led_callback(alarm_id_t id, void *user_data)
 
     // Avança para o próximo LED (0 → 1 → 2 → 0)
     current_led = (current_led + 1) % 3;
+    cancel_repeating_timer(&timer); // Cancela se existir um cronômetro anterior
     name_shown = false;
 
     turn_on_led(current_led);
+    is_traffic_yellow = false;
 
     // Atualiza o tempo restante com base no novo LED
     seconds_remaining = LED_TIMES[current_led] / 1000;
@@ -184,6 +206,7 @@ void button_irq_handler(uint gpio, uint32_t events)
 
     printf("Botão de Pedestres acionado\n");
     button_pressed = false;
+    is_traffic_yellow = true;
     current_led = 2; // Amarelo
     name_shown = false;
 
