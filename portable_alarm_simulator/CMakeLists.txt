@@ -51,7 +51,6 @@ add_executable(portable_alarm_simulator_background
         utils/ssd1306_i2c.c
         dhcpserver/dhcpserver.c
         dnsserver/dnsserver.c
-        setup/access_point/access_point.c
         )
 
 target_include_directories(portable_alarm_simulator_background PRIVATE
@@ -84,7 +83,6 @@ add_executable(portable_alarm_simulator_poll
         utils/ssd1306_i2c.c
         dhcpserver/dhcpserver.c
         dnsserver/dnsserver.c
-        setup/access_point/access_point.c
         )
 target_include_directories(portable_alarm_simulator_poll PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
