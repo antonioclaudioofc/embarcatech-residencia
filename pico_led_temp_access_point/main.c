@@ -27,7 +27,8 @@
 #define HTTP_RESPONSE_HEADERS "HTTP/1.1 %d OK\nContent-Length: %d\nContent-Type: text/html; charset=utf-8\nConnection: close\n\n"
 
 bool led_state = false;
-volatile float temperature = 0.0f;
+float temperature = 0.0f;
+repeating_timer_t timer_temperature;
 
 typedef struct TCP_SERVER_T_
 {
@@ -104,11 +105,12 @@ float read_temperature()
     return temp;
 }
 
-bool temperature_timer_callback(repeating_timer_t *t)
+// Atualiza temperatura
+bool timer_temperature_callback(repeating_timer_t *t)
 {
     temperature = read_temperature();
-    printf("Temperatura: %.2f", temperature);
-    return true; // mantém o timer rodando
+    printf("Temperatura interna: %.2f\n", temperature);
+    return true;
 }
 
 static int server_content(const char *request, const char *params, char *result, size_t max_result_len)
@@ -137,13 +139,8 @@ static int server_content(const char *request, const char *params, char *result,
         led_state = gpio_get(LED_RED);
     }
 
-    // Leitura de temperatura atual (direto do ADC)
-    // float temperature = read_temperature();
-
-    // Gera a resposta HTML com auto-refresh
     len = snprintf(result, max_result_len,
-                   "<html><head><title>Pico W</title>"
-                   "</head><body>"
+                   "<html><body>"
                    "<h1>Servidor Pico W</h1>"
                    "<p>Temperatura Interna: %.2f &deg;C</p>"
                    "<p>LED está: <strong>%s</strong></p>"
@@ -356,9 +353,7 @@ int main()
 {
     setup();
 
-    // // Timer para atualizar a temperatura a cada 5 segundos
-    // repeating_timer_t timer_temperature;
-    // add_repeating_timer_ms(5000, temperature_timer_callback, NULL, &timer_temperature);
+    add_repeating_timer_ms(10000, timer_temperature_callback, NULL, &timer_temperature);
 
     TCP_SERVER_T *state = calloc(1, sizeof(TCP_SERVER_T));
     if (!state)

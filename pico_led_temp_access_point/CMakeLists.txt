@@ -41,6 +41,7 @@ add_executable(pico_led_temp_access_point_background
     setup/led/led.c
     dhcpserver/dhcpserver.c
     dnsserver/dnsserver.c 
+    setup/temperature_sensor/temperature_sensor.c
     )
 
 pico_set_program_name(pico_led_temp_access_point_background "pico_led_temp_access_point")
