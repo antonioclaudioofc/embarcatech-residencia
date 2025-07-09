@@ -43,6 +43,7 @@
         "pwm.h": "c",
         "adc.h": "c",
         "stdio.h": "c",
-        "buzzer.h": "c"
+        "buzzer.h": "c",
+        "joystick.h": "c"
     }
 }
