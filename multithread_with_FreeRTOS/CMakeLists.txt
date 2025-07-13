@@ -35,7 +35,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(multithread_with_FreeRTOS src/main.c setup/setup.c setup/button/button.c setup/buzzer/buzzer.c setup/joystick/joysitck.c)
+add_executable(multithread_with_FreeRTOS src/main.c setup/setup.c setup/buzzer/buzzer.c setup/joystick/joysitck.c)
 
 pico_set_program_name(multithread_with_FreeRTOS "multithread_with_FreeRTOS")
 pico_set_program_version(multithread_with_FreeRTOS "0.1")

@@ -13,6 +13,24 @@
 #define ADC_VRY_CHANNEL 0
 #define ADC_VRX_CHANNEL 1
 
+typedef enum
+{
+  EVENT_JOYSTICK,
+  EVENT_BUTTON
+} EventType;
+
+typedef struct
+{
+  uint16_t vrx;
+  uint16_t vry;
+} JoystickData;
+
+typedef struct
+{
+  EventType type;
+  JoystickData data; // válido apenas se type == EVENT_JOYSTICK
+} Event;
+
 // --- Handles globais ---
 QueueHandle_t queue;
 SemaphoreHandle_t usb_mutex;
@@ -38,16 +56,16 @@ void joystick_task(void *param)
 {
   while (true)
   {
-    uint16_t vrx, vry;
+    Event joystick;
+    joystick.type = EVENT_JOYSTICK;
 
     adc_select_input(ADC_VRX_CHANNEL);
-    vrx = adc_read();
+    joystick.data.vrx = adc_read();
 
     adc_select_input(ADC_VRY_CHANNEL);
-    vry = adc_read();
+    joystick.data.vry = adc_read();
 
-    uint16_t data[2] = {vrx, vry};
-    xQueueSend(queue, &data, 0);
+    xQueueSend(queue, &joystick, 0);
 
     vTaskDelay(pdMS_TO_TICKS(100));
   }
@@ -58,10 +76,12 @@ void button_task(void *param)
 {
   while (true)
   {
-    if (!gpio_get(BUTTON_A) || !gpio_get(BUTTON_B) || !gpio_get(SW_PIN))
+    if (!gpio_get(SW_PIN))
     {
-      xQueueSend(queue, NULL, 0);
-      vTaskDelay(pdMS_TO_TICKS(200)); // debounce
+      Event button;
+      button.type = EVENT_BUTTON;
+      xQueueSend(queue, &button, 0);
+      vTaskDelay(pdMS_TO_TICKS(50)); // debounce
     }
     else
     {
@@ -73,36 +93,33 @@ void button_task(void *param)
 // --- Tarefa 3: Processamento dos Dados ---
 void data_processing_task(void *param)
 {
-  uint16_t data[2];
+  Event event;
 
   while (true)
   {
-    if (xQueueReceive(queue, &data, pdMS_TO_TICKS(10)) == pdTRUE)
+    if (xQueueReceive(queue, &event, pdMS_TO_TICKS(100)) == pdTRUE)
     {
-      // Protege acesso ao printf
-      if (xSemaphoreTake(usb_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
+      if (event.type == EVENT_JOYSTICK)
       {
-        if (data != NULL)
+        // Protege acesso ao printf
+        if (xSemaphoreTake(usb_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
         {
-          printf("Joystick - VRX: %d, VRY: %d\n", data[0], data[1]);
-
-          // Movimento significativo
-          if (abs(data[0] - 2048) > 500 || abs(data[1] - 2048) > 500)
-          {
-            xSemaphoreGive(buzzer_semaphore);
-          }
+          printf("Joystick - VRX: %d, VRY: %d\n", event.data.vrx, event.data.vry);
+          xSemaphoreGive(usb_mutex);
         }
-        else
+
+        if (abs((int)event.data.vrx - 2048) > 1000 || abs((int)event.data.vry - 2048) > 1000)
         {
-          printf("Botão pressionado!\n");
           xSemaphoreGive(buzzer_semaphore);
         }
-
-        xSemaphoreGive(usb_mutex);
       }
-
-      vTaskDelay(pdMS_TO_TICKS(50));
+      else if (event.type == EVENT_BUTTON)
+      {
+        xSemaphoreGive(buzzer_semaphore);
+      }
     }
+
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 
@@ -111,7 +128,7 @@ void buzzer_task(void *param)
 {
   while (true)
   {
-    if (xSemaphoreTake(buzzer_semaphore, portMAX_DELAY) == pdTRUE)
+    if (xSemaphoreTake(buzzer_semaphore, 0  ) == pdTRUE)
     {
       buzzer_on();
       vTaskDelay(pdMS_TO_TICKS(100));
@@ -124,14 +141,14 @@ int main()
 {
   setup();
 
-  queue = xQueueCreate(10, sizeof(uint16_t[2]));
+  queue = xQueueCreate(5, sizeof(Event));
   usb_mutex = xSemaphoreCreateMutex();
   buzzer_semaphore = xSemaphoreCreateCounting(2, 0);
 
   xTaskCreate(joystick_task, "Joystick", 256, NULL, 1, &joystick_handle);
   xTaskCreate(button_task, "Botão", 256, NULL, 1, &button_handle);
-  xTaskCreate(data_processing_task, "Processador", 256, NULL, 1, &data_processing_handle);
-  xTaskCreate(buzzer_task, "Buzzer", 256, NULL, 1, &buzzer_handle);
+  xTaskCreate(data_processing_task, "Processador", 512, NULL, 1, &data_processing_handle);
+  xTaskCreate(buzzer_task, "Buzzer", 512, NULL, 1, &buzzer_handle);
 
   // Afinidade de núcleo (SMP)
   vTaskCoreAffinitySet(joystick_handle, (1 << 0));        // Core 0
