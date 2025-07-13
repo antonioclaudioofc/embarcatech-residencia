@@ -97,7 +97,7 @@ void data_processing_task(void *param)
 
   while (true)
   {
-    if (xQueueReceive(queue, &event, pdMS_TO_TICKS(100)) == pdTRUE)
+    if (xQueueReceive(queue, &event, pdMS_TO_TICKS(10)) == pdTRUE)
     {
       if (event.type == EVENT_JOYSTICK)
       {
@@ -128,11 +128,15 @@ void buzzer_task(void *param)
 {
   while (true)
   {
-    if (xSemaphoreTake(buzzer_semaphore, 0  ) == pdTRUE)
+    if (xSemaphoreTake(buzzer_semaphore, 0) == pdTRUE)
     {
       buzzer_on();
       vTaskDelay(pdMS_TO_TICKS(100));
       buzzer_off();
+    }
+    else
+    {
+      vTaskDelay(pdMS_TO_TICKS(50));
     }
   }
 }
@@ -153,7 +157,7 @@ int main()
   // Afinidade de núcleo (SMP)
   vTaskCoreAffinitySet(joystick_handle, (1 << 0));        // Core 0
   vTaskCoreAffinitySet(button_handle, (1 << 0));          // Core 0
-  vTaskCoreAffinitySet(data_processing_handle, (1 << 1)); // Core 1
+  vTaskCoreAffinitySet(data_processing_handle, (1 << 0)); // Core 0
   vTaskCoreAffinitySet(buzzer_handle, (1 << 1));          // Core 1
 
   vTaskStartScheduler();
