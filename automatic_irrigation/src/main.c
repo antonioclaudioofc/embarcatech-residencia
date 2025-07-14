@@ -13,7 +13,6 @@
 #include "lib/circular_queue/circular_queue.h"
 #include "general_config.h"
 #include "setup/oled/oled_utils.h"
-#include "setup/servo_motor/servo_motor.h"
 #include "setup/led/led.h"
 #include "setup/buzzer/buzzer.h"
 #include "setup/setup.h"
@@ -40,6 +39,9 @@ void check_fifo(void);
 void process_queue(void);
 void init_mqtt_if_needed(void);
 void send_periodic_ping(void);
+void setup_servo(void);
+uint16_t angle_to_duty(float angle);
+void servo_move_to_angle(float angle);
 
 // Fila de comunicação entre os núcleos e controle de tempo de envio
 CircularQueue wifi_queue;
@@ -50,6 +52,7 @@ bool ip_received = false;
 int main()
 {
     setup();
+    setup_servo();
     init_core1();
 
     while (true)
@@ -62,7 +65,7 @@ int main()
         if (servo_ativo && absolute_time_diff_us(get_absolute_time(), tempo_servo_expira) <= 0)
         {
             printf("[NÚCLEO 0] Desligando irrigação (servo 0°)...\n");
-            servo_move_to_angle(180);
+            servo_move_to_angle(45);
             buzzer_off();
             led_off();
 
@@ -201,4 +204,42 @@ void init_core1()
 
     queue_init(&wifi_queue);
     multicore_launch_core1(wifi_core1_function);
+}
+
+void setup_servo()
+{
+    // --- Configuração do Periférico PWM ---
+
+    // 1. Define a função do pino escolhido como PWM.
+    gpio_set_function(SERVO_PIN, GPIO_FUNC_PWM);
+
+    // 2. Descobre qual "fatia" (slice) de hardware PWM controla este pino.
+    uint slice_num = pwm_gpio_to_slice_num(SERVO_PIN);
+
+    // 3. Configura os parâmetros do PWM para gerar um sinal de 50Hz.
+    pwm_config config = pwm_get_default_config();
+    pwm_config_set_clkdiv(&config, 125.0f); // 125MHz / 125 = 1us por tick
+    pwm_config_set_wrap(&config, 20000);    // 20ms = 50Hz
+
+    // 4. Inicia o PWM com a configuração
+    pwm_init(slice_num, &config, true);
+}
+
+/**
+ * @brief Converte um ângulo (0° a 180°) para duty cycle (em ticks)
+ */
+uint16_t angle_to_duty(float angle)
+{
+    float pulse_ms = 0.5f + (angle / 180.0f) * 2.0f;
+    return (uint16_t)((pulse_ms / 20.0f) * 20000.0f);
+}
+
+/**
+ * @brief Move o servo para o ângulo especificado, reativando a slice PWM se necessário.
+ */
+void servo_move_to_angle(float angle)
+{
+    uint slice = pwm_gpio_to_slice_num(SERVO_PIN);
+    pwm_set_enabled(slice, true); // Reativa a slice (caso tenha sido desabilitada por RGB)
+    pwm_set_gpio_level(SERVO_PIN, angle_to_duty(angle));
 }
