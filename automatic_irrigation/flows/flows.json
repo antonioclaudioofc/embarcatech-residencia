@@ -1,0 +1,23 @@
+[
+    {
+        "id": "fd21cbef08b5e9de",
+        "type": "function",
+        "z": "87506ebb297061a9",
+        "name": "function 1",
+        "func": "const agendamentos = msg.payload;\nconst agora = new Date();\n\nconst dataAtual = agora.toISOString().split(\"T\")[0];\nconst horaAtual = agora.toTimeString().slice(0, 5);\n\nfor (const id in agendamentos) {\n    const item = agendamentos[id];\n    if (\n        item.status === \"Ativo\" &&\n        item.specificDate === dataAtual &&\n        item.time === horaAtual\n    ) {\n        // Se horário bater, envia comando MQTT\n        return {\n            topic: \"pico/irrigacao\",\n            payload: \"ON\"\n        };\n    }\n}\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1040,
+        "y": 200,
+        "wires": [
+            [
+                "e5d6726392b6995d",
+                "9d44a8c19a4ccf98"
+            ]
+        ]
+    }
+]
