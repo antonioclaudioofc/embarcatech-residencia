@@ -28,9 +28,9 @@
 #define TEMPO_MENSAGEM 2000
 #define TAM_FILA 16
 
-#define WIFI_SSID "Starlink"
-#define WIFI_PASS "19999999"
-#define MQTT_BROKER_IP "192.168.0.14"
+#define WIFI_SSID "linux"
+#define WIFI_PASS "00000000"
+#define MQTT_BROKER_IP "10.119.74.30"
 
 #define MQTT_BROKER_PORT 1883
 

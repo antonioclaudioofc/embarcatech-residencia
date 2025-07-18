@@ -65,7 +65,7 @@ int main()
         if (servo_ativo && absolute_time_diff_us(get_absolute_time(), tempo_servo_expira) <= 0)
         {
             printf("[NÚCLEO 0] Desligando irrigação (servo 0°)...\n");
-            servo_move_to_angle(45);
+            servo_move_to_angle(180);
             buzzer_off();
             led_off();
 
